@@ -1,0 +1,63 @@
+[
+  {
+    "type": "ENTER",
+    "index": "entities"
+  },
+  {
+    "type": "REMOVE_ARRAY_ELEMENT",
+    "index": 97
+  },
+  {
+    "type": "ADD_ARRAY_ELEMENT",
+    "content": {
+      "type": "Enemy",
+      "x": 736,
+      "y": 384,
+      "level": 0,
+      "settings": {
+        "name": "baggy",
+        "mapId": 282,
+        "enemyInfo": {
+          "group": "",
+          "party": "",
+          "face": null,
+          "type": "baggy-kun",
+          "attribs": {}
+        }
+      }
+    }
+  },
+  {
+    "type": "ADD_ARRAY_ELEMENT",
+    "content": {
+        "type": "TeleportField",
+      "x": 736,
+      "y": 280,
+      "level": 0,
+      "settings": {
+        "size": {
+          "x": 16,
+          "y": 16
+        },
+        "mapId": 283,
+        "name": "modMap",
+        "dir": "SOUTH",
+        "teleportLabel": {
+          "en_US": "To Testing Grounds",
+          "de_DE": "",
+          "ja_JP": "",
+          "ko_KR": "",
+          "zh_CN": "",
+          "zh_TW": ""
+        },
+        "gfxType": "AR",
+        "map": "mod-maps.puzzle",
+        "marker": "entrance",
+        "longTelCond": "false"
+      }
+    }
+  },
+  {
+    "type": "EXIT"
+  }
+]
