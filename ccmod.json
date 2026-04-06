@@ -1,11 +1,17 @@
 {
 	"id": "qt-squared-affinity",
-	"version": "0.0.1",
+	"version": "0.1.0",
 	"title": {
 		"en_US": "Squared Affinity"
 	},
 	"description": {
 		"en_US": "A very WIP version of a dungeon QuieType is making. Right now it has just one room. One terrible terrible room."
     },
+	"repository": "https://github.com/QuieType/qt-squared-affinity",
+  	"tags": ["puzzle"],
+  	"authors": "QuieType",
+  	"icons": {
+  	  "24": "icon24.png"
+ 	},
 	"prestart": "_prestart.js"
 }

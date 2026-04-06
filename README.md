@@ -2,4 +2,4 @@ Squared Affinity is going to be the name of a small super-hard Crosscode dungeon
 You can get to the puzzle from a teleporter on the bottom floor of the Info Hub in rookie harbor.
 
 WARNING:
-This mod currently breaks all ice physics on ice tiles (not entityies) in the game. Disable the mod when you're not using it directly.
+This mod currently breaks all ice physics on ice tiles (not entities) in the game. Disable the mod when you're not using it directly.
