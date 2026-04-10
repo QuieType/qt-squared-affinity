@@ -1,4 +1,3 @@
-//something, I assume in this file is breaking ice tile physics. TODO FIX THIS!
 
 
 //adds a block that can slide and teleport
@@ -286,3 +285,26 @@ sc.STEAM_PIPE_TYPES.INVISCURVE_NW = {
         },
     ],
 }
+//absolutely broken. maybe modify a lorry respawner instead?
+ig.module('game.feature.puzzle.qt-puzzle-steps')
+    .requires('impact.base.action', 'impact.base.event', 'impact.base.entity')
+    .defines(() => {
+        ig.EVENT_STEP.RESPAWN_LORRY = ig.EventStepBase.extend({
+            entity/*: Nullable<ig.Event.GetEntity>*/: null,
+            _wm/*: ig.Config*/: new ig.Config({
+                attributes: {
+                    entity: {
+                        _type: 'Entity',
+                        _info: 'Lorry to respawn',
+                    },
+                },
+            }),
+            init(settings/*: ig.EVENT_STEP.DESTROY_DESTRUCTIBLE.Settings*/)/*: DESTROY_DESTRUCTIBLE*/ {
+                this.entity = settings.entity || null
+            },
+            start(data/*?: unknown*/, eventCall/*?: ig.EventCall*/)/*: void*/ {
+                const c = ig.Event.getEntity(this.entity, eventCall)
+                c && c.resetPos && c.resetPos(c.coll.pos, c.initDir)
+            },
+        })
+    })
