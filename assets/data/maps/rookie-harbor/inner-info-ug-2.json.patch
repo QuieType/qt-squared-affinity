@@ -51,7 +51,7 @@
           "zh_TW": ""
         },
         "gfxType": "AR",
-        "map": "mod-maps.puzzle",
+        "map": "mod-maps.A3",
         "marker": "entrance",
         "longTelCond": "false"
       }
