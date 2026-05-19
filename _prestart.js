@@ -1,6 +1,6 @@
 
 
-//adds a block that can slide and teleport
+//adds a block that can slide and teleport.
 ig.module('game.feature.puzzle.entities.wave-sliding-block')
     .requires('impact.base.actor-entity', 'impact.base.entity', 'impact.feature.effect.effect-sheet')
     .defines(() => {
