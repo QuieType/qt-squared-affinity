@@ -281,8 +281,16 @@ sc.STEAM_PIPE_TYPES.INVISCURVE_NW = {
 }
 
 //an element pole that can be part of multiple groups
+//POLE TODO:
+//  Ball continues after a dest is triggered
+//  onCancel() poles error when another different-element ball hits them after they already triggered a dest
 
 const Vec3_temp = Vec3.create()
+var EL = {}
+EL[sc.ELEMENT.HEAT] = 'flame'
+EL[sc.ELEMENT.COLD] = 'ice'
+EL[sc.ELEMENT.SHOCK] = 'shock'
+EL[sc.ELEMENT.WAVE] = 'wave'
 
 //an object containing all the group data and functions to process it.
 sc.ElementPoleGroupsMulti = {
@@ -328,22 +336,22 @@ sc.ElementPoleGroupsMulti = {
             if (!pole.groups) return true
             for (let tmp of pole.groups) { //For each group in groups,
                 let e = this.getGroup(tmp);
-                var element = e.dests[element] || null //set element to be the element of the ball
-                if ((e.currentBall && e.currentBall != ball && !alreadyHit) || (e.currentDest && e.currentDest != element)) { //if the group has a currentBall, and that currentBall is not the same as the ball that hit the pole, and the pole wasn't already hit,
-                    this.onGroupChargeCancel(pole) //cancel charging up the pole
-                    alreadyHit = false //and set AlreadyHit to false.
+                let dest = e.dests[element] || null //set element to be the element of the ball //ai was used here briefly. see https://chatgpt.com/share/6a41a7b8-ae54-83ea-8d16-70bbb4b8a842
+                if ((e.currentBall && e.currentBall != ball && !alreadyHit) || (e.currentDest && e.currentDest != dest)) { //if the group is already charging but with a different ball, 
+                    this.onGroupChargeCancel(pole, ball) //cancel charging up the pole
+                    alreadyHit = false //and set AlreadyHit to false, because you have to hit them all with the same ball. Potential source of noTriggerOnCancel bug?
                 }
-                if (element && !element.isOn()) { //if the dest has an element, and that dest is off,
+                if (dest && !dest.isOn()) { //if the dest has an element, and that dest is off,
                     if (alreadyHit || e.hitCount >= e.poles.length) return true //if the pole was alreadyHit, or if the group's hitCount is larger than the length of the number of poles in the group, let the ball continue on it's way normally and return.
                     e.currentBall = ball //if not, set the currectBall of the group to the ball that just hit the pole
-                    e.currentDest = element //and set the current destination to the element.
+                    e.currentDest = dest //and set the current destination to the element.
                     e.hitCount++ //and increase the the groups temporary hitCount
-                    ball = e.hitCount == e.poles.length //if the hitCount equals the number of poles in the group, set ball to true.
-                    element.onPoleHit(pole, ball, e.poles) //call onPoleHit for the pole, ball (now a boolean), and group.poles
-                    if (ball) { //if the hitCount equals the number of poles in the group (ie trigger the dest on)
-                        for (ball = e.poles.length; ball--; ) { //for the amount of poles in the group
-                            alreadyHit = e.poles[ball] //set already hit to each pole in group.poles
-                            if (pole != alreadyHit) alreadyHit.onComplete() //if the last (current) pole hit isn't the one we're dealing with, set the one we're dealing with COMPLETE! Yay!
+                    let done = e.hitCount == e.poles.length //if the hitCount equals the number of poles in the group, set ball to true.
+                    dest.onPoleHit(pole, done, e.poles) //call onPoleHit for the pole, ball (now a boolean), and group.poles
+                    if (done) { //if the hitCount equals the number of poles in the group (ie trigger the dest on)
+                        for (let p = e.poles.length; p--; ) { //for the amount of poles in the group
+                            let otherPole = e.poles[p] //set already hit to each pole in group.poles
+                            if (pole != otherPole) otherPole.onComplete() //if the last (current) pole hit isn't the one we're dealing with, set the one we're dealing with COMPLETE! Yay!
                         }
                     }
                 }
@@ -352,14 +360,14 @@ sc.ElementPoleGroupsMulti = {
         }
     },
     //this now returns an array, one for each group
-    getChargeState(b) { //I'm not %100 sure what this does, but I made changes
-        if (!b.groups) return a.TMP
+    getChargeState(b) { //Get the charge states of each of the groups that a torch belongs to
+        if (!b.groups) return [chargeStateTypes.TMP] //if the torch belongs to no groups, return an array of one temporary charge
         let chargeState = [];
-        for (const tmp of b.groups) {
-            const q = this.getGroup(tmp);
-            chargeState.push(!q.currentDest ? a.TMP : q.hitCount < q.poles.length ? a.PENDING : a.GROUP)
+        for (const g of b.groups) { //for each group that the torch belongs to,
+            const q = this.getGroup(g); //fetch that group,
+            chargeState.push(!q.currentDest ? chargeStateTypes.TMP : q.hitCount < q.poles.length ? chargeStateTypes.PENDING : chargeStateTypes.GROUP) //if the group has no current dest, meaning the element used is not in the group, set the charge state to TMP. If the group's hitcount is less than the amount of poles in it, return a.PENDING (this means the group still has poles to go). If not, return a.GROUP (the group is done!)
         }
-        return chargeState
+        return chargeState //return the array of chargestates
     },
     onFinalizeGroup(dest) { 
         dest = this.getGroup(dest.group)
@@ -377,17 +385,27 @@ sc.ElementPoleGroupsMulti = {
         }
         return false
     },
-    onGroupChargeCancel(pole) {
-        if (!pole.groups) return null
-        for (const tmp of pole.groups) {
-            var b = this.getGroup(tmp)
-            b.currentDest.onCancel()
-            b.currentDest = null
-            b.hitCount = 0
-            b.currentBall = null
-            for (let c = b.poles.length; c--; ) {
-                const d = b.poles[c]
-                if (d != pole) d.onCancel()
+    onGroupChargeCancel(currentPole, ball) {
+        if (!currentPole.groups) return null
+        for (const tmp of currentPole.groups) {
+            let b = this.getGroup(tmp)
+            if (tmp.currentBall != ball) {
+                for (let c = b.poles.length; c--; ) {
+                    const p = b.poles[c]
+                    let isInThisGroup = false
+                    //if (p != currentPole) p.onCancel() //old
+                    for (let g of p.groups)
+                        for (let d in this.getGroup(g).dests)
+                            if (d.currentBall == ball)
+                                isInThisGroup = true
+                    if (!isInThisGroup && p != currentPole) p.onCancel()
+                }
+            }
+            if (b.currentDest) {
+                b.currentDest.onCancel()
+                b.currentDest = null
+                b.hitCount = 0
+                b.currentBall = null
             }
         }
     },
@@ -429,7 +447,7 @@ sc.TERMO_POLE_TYPE_MULTI.SHORT = {
     },
 }
 
-var a = {
+var chargeStateTypes = {
     NONE: {
         timed: false,
     },
@@ -455,7 +473,7 @@ ig.ENTITY.ElementPoleMulti = ig.AnimatedEntity.extend({
     gfx: null,
     groups/*: changed to an array of group objects */: [],
     charge/*: ElementPole.Charge*/: {
-        state: a.NONE,
+        state: chargeStateTypes.NONE,
         element/*: sc.ELEMENT*/: 0,
         prevElement: 0,
         timer: 0,
@@ -522,7 +540,7 @@ ig.ENTITY.ElementPoleMulti = ig.AnimatedEntity.extend({
     },
     onHideRequest() {
         this.active = false
-        this.charge.state != a.NONE && this.discharge(true)
+        this.charge.state != chargeStateTypes.NONE && this.discharge(true)
         this.effects.hideHandle = ig.game.effects.teleport.spawnOnTarget('hideDefault', this, {
             callback: this,
         })
@@ -537,10 +555,10 @@ ig.ENTITY.ElementPoleMulti = ig.AnimatedEntity.extend({
         this.setSpriteCount(3)
     },
     update()/*: void*/ {
-        if (this.charge.state != a.NONE) {
+        if (this.charge.state != chargeStateTypes.NONE) {
             this.charge.timer.tick()
             if (this.charge.state.timed && this.charge.timer.done())
-                this.charge.state == a.DISCHARGE ? (this.charge.state = a.NONE) : this.discharge()
+                this.charge.state == chargeStateTypes.DISCHARGE ? (this.charge.state = chargeStateTypes.NONE) : this.discharge()
         }
         this.parent()
     },
@@ -553,7 +571,7 @@ ig.ENTITY.ElementPoleMulti = ig.AnimatedEntity.extend({
             c.setAlpha(this.animState.alpha)
             var c = this.sprites[1]
             const e = this.sprites[2]
-            if (this.charge.state == a.DISCHARGE) {
+            if (this.charge.state == chargeStateTypes.DISCHARGE) {
                 var f = this.charge.prevElement * 16
                 c.setEntityDefault(this, 16, d, 'NO_EXPAND', 1, null, this.gfx, b.x + f, b.y)
                 d = c.size.y + c.size.z
@@ -603,7 +621,7 @@ ig.ENTITY.ElementPoleMulti = ig.AnimatedEntity.extend({
         }
     },
     resetTimer(b) {
-        this.charge.state == a.TMP && this.charge.timer.setRemainingTime(b)
+        this.charge.state == chargeStateTypes.TMP && this.charge.timer.setRemainingTime(b)
     },
     addLight(a) {
         if (this.active) {
@@ -620,20 +638,20 @@ ig.ENTITY.ElementPoleMulti = ig.AnimatedEntity.extend({
         this.charge.timer.set(0.5, ig.TIMER_MODE.ONCE)
         this.charge.prevElement = this.charge.element
         this.charge.element = 0
-        this.charge.state = a.DISCHARGE
+        this.charge.state = chargeStateTypes.DISCHARGE
         for (b = this.charge.lightHandles.length; b--; ) this.charge.lightHandles[b].stop()
         this.charge.lightHandles.length = 0
     },
     showEffect(b, c, d) {
-        c = `${e[b]}Circle${c ? 'Down' : 'Up'}`
+        c = `${EL[b]}Circle${c ? 'Down' : 'Up'}`
         this.effects.sheet.spawnOnTarget(c, this, {
             offset: {
                 z: 12,
             },
         })
-        if (d == a.TMP) {
+        if (d == chargeStateTypes.TMP) {
             this.effects.handle && this.effects.handle.stop()
-            c = `${e[b]}Temp`
+            c = `${EL[b]}Temp`
             this.effects.handle = this.effects.sheet.spawnOnTarget(c, this, {
                 offset: {
                     x: 1,
@@ -643,28 +661,36 @@ ig.ENTITY.ElementPoleMulti = ig.AnimatedEntity.extend({
             })
         }
     },
-    ballHit(ballLike)/*: boolean*/ {
-        if (this.active) {
-            if (!ballLike.isBall || ballLike.party != sc.COMBATANT_PARTY.PLAYER) return false
-            const element = ballLike.getElement()
-            if (!sc.ElementPoleGroupsMulti.onPoleHit(this, ballLike, this.charge.element == element)) {
-                sc.combat.showHitEffect(this, ballLike.getHitCenter(this), sc.ATTACK_TYPE.NONE, ballLike.getElement(), false, false, true)
-                return true
+    ballHit(ballLike)/*: boolean*/ { //returning true causes the ball to continue, returning false ends the ball
+        if (this.active) { //if the pole is active
+            if (!ballLike.isBall || ballLike.party != sc.COMBATANT_PARTY.PLAYER) return false //if the thing that hit the pole wasn't a ball, or if a monster/party member threw it, just go through the torch
+            const element = ballLike.getElement() //element refers to the element of the ball sent
+            if (!sc.ElementPoleGroupsMulti.onPoleHit(this, ballLike, this.charge.element == element)) { //call onPoleHit(). If it returns false, 
+                sc.combat.showHitEffect(this, ballLike.getHitCenter(this), sc.ATTACK_TYPE.NONE, ballLike.getElement(), false, false, true) //make the ball hit as if a wall was hit
+                return true //and end the ball. otherwise,
             }
-            var e = false
-            this.charge.state != a.TMP && ballLike.cleanDirection(0.015)
-            if (this.data.changeHeight) {
-                var e = ballLike.coll.pos.z > this.coll.pos.z + this.coll.size.z / 2
-                const f = ig.CollTools.getCenterXYAlignedPos(Vec3_temp, ballLike.coll, this.coll)
-                f.z = e ? this.coll.pos.z + 12 : this.coll.pos.z + this.data.changeHeight + 12
+            var e = false 
+            this.charge.state != chargeStateTypes.TMP && ballLike.cleanDirection(0.015) //if the chargestate of the ball doesn't equal a.TEMP, I think cleanDirection makes the ball continue straight as shot correction
+            if (this.data.changeHeight) { //if this is the type of torch that changes the ball's height,
+                var e = ballLike.coll.pos.z > this.coll.pos.z + this.coll.size.z / 2 //if the ball is more than halfway up the torch, set e to true. otherwise, set it to false
+                const f = ig.CollTools.getCenterXYAlignedPos(Vec3_temp, ballLike.coll, this.coll) //get the coords of the ball should it be in the exact centre of the torch
+                f.z = e ? this.coll.pos.z + 12 : this.coll.pos.z + this.data.changeHeight + 12 //set f.z to the bottom or top of the torch
                 ballLike.grabPoint(f, 0.5)
             }
             var chargeStates = sc.ElementPoleGroupsMulti.getChargeState(this)
+            //old function
+            //for (const cs of chargeStates) { //for each group associated with this pole, regarding their chargestate, 
+            //    this.chargeElement(element, e, cs) //TODO: ooookay. we can't just charge the torch with every random chargestate. Instead, getChargeState will hafta return an object of {element: chargeState}. then, we can go this.chargeElement(element, e, cs[element]) No, that can't work, bc groups can have more than one dest. We need to instead look through the chargestates and find the 'strictest' one, then apply that. I don't want to think about how though.
+            //}
+            let currentCS = chargeStateTypes.TMP
             for (const cs of chargeStates) {
-                this.chargeElement(element, e, cs) //look here for bugs
+                if (cs == currentCS) continue
+                else if (currentCS == chargeStateTypes.TMP && (cs == chargeStateTypes.PENDING || cs == chargeStateTypes.GROUP)) currentCS = cs
+                else if (currentCS == chargeStateTypes.PENDING && cs == chargeStateTypes.GROUP) currentCS = cs
             }
+            this.chargeElement(element, e, currentCS)
             if (this.charge.element != this.charge.prevElement) {
-                if (this.charge.state == a.GROUP) return true
+                if (this.charge.state == chargeStateTypes.GROUP) return true
                 ballLike.timer < 0.2 && ballLike.resetTime(0.2)
             }
             ballLike.addIgnore(this)
@@ -674,14 +700,14 @@ ig.ENTITY.ElementPoleMulti = ig.AnimatedEntity.extend({
     onComplete() {
         this.effects.handle && this.effects.handle.stop()
         this.effects.handle = null
-        this.chargeElement(this.charge.element, false, a.GROUP)
+        this.chargeElement(this.charge.element, false, chargeStateTypes.GROUP)
     },
     onDestInit(b) {
-        this.chargeElement(b, false, a.GROUP, true)
+        this.chargeElement(b, false, chargeStateTypes.GROUP, true)
     },
     onFinalize() {},
     onCancel() {
-        this.charge.element && this.discharge()
+        if (this.charge.element) this.discharge()
     },
     isBallAdjust()/*: boolean*/ {
         if (this.active) return this.data.changeHeight
@@ -821,7 +847,7 @@ ig.ENTITY.ElementPoleDestMulti = ig.AnimatedEntity.extend({
             this.timer <= 1 && this.currentAnim != 'tmpOnEnd' && this.setCurrentAnim('tmpOnEnd')
             if (this.timer <= 0) {
                 this.timer = 0
-                sc.ElementPoleGroupsMulti.onGroupChargeCancel(this)
+                sc.ElementPoleGroupsMulti.onGroupChargeCancel(this) //This line MUST be fixed to use timed multi-group poles
                 this.turnOff()
             }
         }
@@ -834,24 +860,24 @@ ig.ENTITY.ElementPoleDestMulti = ig.AnimatedEntity.extend({
     isOn() {
         return this.state == c.ON
     },
-    onPoleHit(a, b, d) {
-        const f = `${e[this.element]}Charge`
-        this.state = b ? c.ON : c.CHARGING
-        a.effects.handle && a.effects.handle.stop()
-        if (b)
-            for (b = d.length; b--; ) {
+    onPoleHit(pole, isDone, allPoles) {
+        const f = `${EL[this.element]}Charge`
+        this.state = isDone ? c.ON : c.CHARGING
+        pole.effects.handle && pole.effects.handle.stop()
+        if (isDone)
+            for (let p = allPoles.length; p--; ) {
                 const k = this.effects.sheet.spawnOnTarget(f, this, {
-                    target2: d[b],
+                    target2: allPoles[p],
                     target2Align: ig.ENTITY_ALIGN.TOP,
                 })
-                if (d[b] == a) {
+                if (allPoles[p] == pole) {
                     k.setCallback(this)
                     this.effects.handle = k
                 }
             }
         else
-            a.effects.handle = this.effects.sheet.spawnOnTarget(`${f}Prepare`, this, {
-                target2: a,
+            pole.effects.handle = this.effects.sheet.spawnOnTarget(`${f}Prepare`, this, {
+                target2: pole,
                 target2Align: ig.ENTITY_ALIGN.TOP,
                 duration: -1,
             })
@@ -865,7 +891,7 @@ ig.ENTITY.ElementPoleDestMulti = ig.AnimatedEntity.extend({
     turnOn() {
         this.effects.handle = null
         sc.ElementPoleGroupsMulti.onFinalizeGroup(this)
-        this.effects.sheet.spawnOnTarget(`${e[this.element]}Activate`, this)
+        this.effects.sheet.spawnOnTarget(`${EL[this.element]}Activate`, this)
         ig.vars.set(this.variable, true)
         this.turnOnGfx()
     },
@@ -892,6 +918,8 @@ ig.ENTITY.ElementPoleDestMulti = ig.AnimatedEntity.extend({
         this.setCurrentAnim('off', true)
     },
 })
+
+
 ig.ACTION_STEP.SHOW_RANDOM_ANIMATION = ig.ActionStepBase.extend({
     randAnims/*: string[]*/: null,
     _wm/*: ig.Config*/: new ig.Config({
